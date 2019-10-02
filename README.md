@@ -1,2 +1,2 @@
-# RoyWangProject-
-My R programming Labs 
+# RoyWangProject
+This is a collection of Roy's Samples
