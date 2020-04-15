@@ -1,0 +1,341 @@
+---
+title: "Assignment 4"
+author: "Roy Wang"
+date: "2/27/2020"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+
+## 1. Descriptive analysis: Load the RData files into R and answer the following questions based on the training data: (2.5 points)
+
+```{r}
+load("variety_train.RData")
+load("variety_test.RData")
+```
+
+### (a) What is the observed CTR in the data and the average of the users’ past click through rate (ctruser)? Are these numbers as expected? Why or why not? (0.5 points)
+```{r}
+nrow(subset(variety_train,click==1))/nrow(variety_train)
+mean(variety_train$ctruser)
+```
+
+The observed CTR in the data is 11.34%, and the average of the users' past click through rate is 11.65%, these numbers are higher than what I expected. They are close so that the data can represent the users' behavior. 
+
+### (b) Plot the historgrams of in-session variety (variety), and pre-session variety (varietytotal). What do you infer from the plots? (0.5 points)
+```{r}
+hist(variety_train$variety)
+hist(variety_train$varietytotal)
+
+```
+The number of in-session variety is less than 10, most of users have seen in-session ads 2-5 times. Before this session, most of users have seen 15-35 ads. These numbers makes sense becuase there seven sessions before this session. 
+
+
+### (c) Run a correlation test between the two in-session variables (variety) and (rep)? What do you infer from the sign and the magnitude of the correlation? (0.5 points)
+```{r}
+cor.test(variety_train$variety,variety_train$rep)
+```
+the correlation between variety and rep is -0.7 which is close to -1. This means that they are highly negatively corrleated. They changed in inverse trends. 
+
+
+### (d) Plot the average or mean CTR at each level of in-session variety.Now based on this graph, interpret the relationship between in-session variety and click? Are you more or less likely to click if you have seen a higher variety of ads previously? (0.5 points)
+```{r}
+library(gplots)
+plotmeans(click ~ variety, data = variety_train)
+```
+Geneally, people are more likely to click if they have seen a higher variety of ads based on this graph. 
+
+### e)Based on how the experiment was run, do you think this effect is causal? That is, is variety causing the changes in CTR that you see in the graph or is this simply a correlation between CTR and variety? (0.5 points)
+
+The effect is causal. The more variety, the less the probability that users remember the ads. Repeating ads will give the users higher extent of impression of ads which lead to click.
+
+## 2. Within-session level models: Build, visualize, and predict using CART and XGBoost models that take into account only the user’s ad exposure earlier within the same session. (2.5 points)
+
+### a)Estimate a CART model (to predict click) with the three within-session behavioral history variables on the training data. Use a complexity parameter of 0.00032. (0.5 points)
+```{r, eval = FALSE}
+install.packages("rpart.plot")
+```
+
+
+```{r}
+library('rpart')
+library('rpart.plot')
+behavioral.model <- click ~ variety+rep+adimpsession
+
+behavioral.tree <- rpart(formula = behavioral.model, 
+                         data = variety_train, control = rpart.control(cp = 0.00032))
+```
+
+### b)Visualize this CART model and give a short overview of your findings. Discuss: how many leaves does this tree have, how does it split, which variables matter, and whether any variables are omitted. (0.5 points)
+```{r}
+rpart.plot(behavioral.tree)
+```
+There are 5 leaves in this tree. It splits by using only one variable- variety whic means that variety has much more power to predict click than rep and adimpsession. Users with variety >= 3 and variety < 4 have 9.7% probability to click the ads. They account for 33% of our data.
+
+### c) Predict on the test dataset with this CART model and store the predictions in a column named ‘withinsession.CART.pred’. (0.5 points)
+
+```{r}
+withinsession.CART.pred <- predict(behavioral.tree, variety_test)
+variety_test$withinsession.CART.pred <- withinsession.CART.pred
+```
+
+### d)Estimate an XGBoost model (to predict click) with the three within-session behavioral history variables using the training dataset. Use the following hyper-parameters: eta = 0.1, max_depth = 6,nround = 100,subsample = 1,colsample_bytree = 1,num_class = 1,min_child_weight = 5, and gamma = 5. (0.5 points)
+```{r}
+library('xgboost')
+col.behavioral = c(7,8,9)
+xgb.behavioral<- xgboost(data = data.matrix(variety_train[,col.behavioral]), 
+                  label = variety_train[,1], 
+                  eta = 0.1,
+                  max_depth = 6, 
+                  nround=100, 
+                  subsample = 1,
+                  colsample_bytree = 1,
+                  num_class = 1,
+                  min_child_weight = 5,
+                  gamma = 5,
+                  nthread = 30,
+                  eval_metric = "logloss",
+                  objective = "binary:logistic",
+                  verbose = 0
+                  )
+```
+
+### e)Predict on the test dataset with this XGBoost model and store the predictions in a column named ‘presession.xgb.pred’. (0.5 points)
+```{r}
+variety_test$withinsession.xgb.pred <- predict(xgb.behavioral, data.matrix(variety_test[,col.behavioral]))
+```
+
+## 3)Pre-session level models: Build, visualize, and predict using CART and XGBoost models that only consider the user’s ad exposure and behavior before the session. (2.5 points)
+
+### a)Estimate a CART model (to predict click) with the four pre-session behavioral history variables on the training data. Use a complexity parameter of 0.00032. (0.5 points)
+```{r}
+presession.model <- click ~imptotal+ctruser+varietytotal+adimptotal
+
+presession.tree <- rpart(formula = presession.model, 
+                         data = variety_train, control = rpart.control(cp = 0.00032))
+```
+
+### b)Visualize this CART model and give a short overview of your findings. Discuss: how many leaves does this tree have, how does it split, which variables matter, and whether any variables are omitted. (0.5 points)
+```{r}
+rpart.plot(presession.tree)
+```
+There are seven leaves in this tree. It splits by using only ctruser. The other 3 variables are omitted. Users with ctruser between 0.075 and 0.14 have 0.11 probability to click the ads. They account for 29% of our data.
+
+
+### c)Predict on the test dataset with this CART model and store the predictions in a column named ‘presession.CART.pred’. (0.5 points)
+```{r}
+pre.CART.prediction <- predict(presession.tree, variety_test)
+variety_test$presession.CART.pred <-pre.CART.prediction
+```
+
+### d)Estimate an XGBoost model (to predict click) with the four pre-session behavioral history variables using the training dataset. Use the following hyper-parameters: eta = 0.1, max_depth = 6,nround = 100,subsample = 1,colsample_bytree = 1,num_class = 1,min_child_weight = 5, and gamma = 5. (0.5 points)
+```{r}
+library('xgboost')
+col.pre = c(3,4,5,6)
+xgb.pre<- xgboost(data = data.matrix(variety_train[,col.pre]), 
+                  label = variety_train[,1], 
+                  eta = 0.1,
+                  max_depth = 6, 
+                  nround=100, 
+                  subsample = 1,
+                  colsample_bytree = 1,
+                  num_class = 1,
+                  min_child_weight = 5,
+                  gamma = 5,
+                  nthread = 30,
+                  eval_metric = "logloss",
+                  objective = "binary:logistic",
+                  verbose = 0
+                  )
+```
+
+### e)Predict on the test dataset with this XGBoost model and store the predictions in a column named ‘presession.xgb.pred’. (0.5 points)
+```{r}
+variety_test$presession.xgb.pred <- predict(xgb.pre, data.matrix(variety_test[,col.pre]))
+```
+
+
+
+## 4. Full models: Build, visualize, and predict using CART and XGBoost models that use all the data available for each impression. (2.5 points)
+
+### a)Estimate a CART model (to predict click) with all the impression-level variables in the training data. Use a complexity parameter of 0.00032. (0.5 points)
+```{r}
+full.model <- click ~imptotal+ctruser+varietytotal+adimptotal+variety+rep+adimpsession
+
+full.tree <- rpart(formula = full.model, 
+                         data = variety_train, control = rpart.control(cp = 0.00032))
+```
+
+### b)Visualize this CART model and give a short overview of your findings. Discuss: how many leaves does this tree have, how does it split, which variables matter, and whether any variables are omitted. (0.5 points)
+```{r}
+rpart.plot(full.tree)
+```
+There are 17 leaves in this tree. It splits using ctruser, variety, and adimpseesion. other variables are omitted due to the power of predicting. One example of explianing the leaves: users with ctruser< <0.075 and variety < 4 account for 17% of our data, and they have 4% probabilty to click the ads.
+
+
+### c)Predict on the test dataset with this CART model and store the predictions in a column named ‘full.CART.pred’. (0.5 points)
+```{r}
+full.CART.prediction <- predict(full.tree, variety_test)
+variety_test$full.CART.pred <-full.CART.prediction
+```
+
+### d)Estimate an XGBoost model (to predict click) with all variables using the training dataset. Use the following hyper-parameters: eta = 0.1,max_depth = 4,nround = 100,subsample = 1, colsample_bytree = 1, num_class = 1, min_child_weight = 5, and gamma = 5. (0.5 points)
+```{r}
+col.full = c(2:9)
+xgb.full<- xgboost(data = data.matrix(variety_train[,col.full]), 
+                  label = variety_train[,1], 
+                  eta = 0.1,
+                  max_depth = 6, 
+                  nround=100, 
+                  subsample = 1,
+                  colsample_bytree = 1,
+                  num_class = 1,
+                  min_child_weight = 5,
+                  gamma = 5,
+                  nthread = 30,
+                  eval_metric = "logloss",
+                  objective = "binary:logistic",
+                  verbose = 0
+                  )
+```
+
+### e)Predict on the test dataset with this XGBoost model and store the predictions in a column named ‘full.xgb.pred’.(0.5 points)
+```{r}
+variety_test$full.xgb.pred <- predict(xgb.full, data.matrix(variety_test[,col.full]))
+```
+
+## 5). Model evaluation: Evaluate the performance of all the six models you ran earlier on AUC and RIG. (1 point)
+
+### (a) First, use Area Under the Curve (AUC) to evaluate the performance of the six models presented above. Present the results in a table. (You do not need to plot the ROC curves for each of the six models.) (0.25 points)
+```{r}
+library('pROC')
+#auc of withinsession cart 
+auc.cart.withinsession = roc(variety_test$click, variety_test$withinsession.CART.pred)
+auc(auc.cart.withinsession)
+
+#auc of withinsession xgboost
+auc.xgb.withinsession = roc(variety_test$click, variety_test$withinsession.xgb.pred)
+auc(auc.xgb.withinsession)
+
+#auc of presession cart
+auc.cart.presession = roc(variety_test$click, variety_test$presession.CART.pred)
+auc(auc.cart.presession)
+
+#auc of presession xgboost
+auc.xgb.presession = roc(variety_test$click, variety_test$presession.xgb.pred)
+auc(auc.xgb.presession)
+
+#auc of full cart 
+auc.cart.full = roc(variety_test$click, variety_test$full.CART.pred)
+auc(auc.cart.full)
+
+#auc of full xgboost
+auc.xgb.full = roc(variety_test$click, variety_test$full.xgb.pred)
+auc(auc.xgb.full)
+
+```
+We now tabulate AUC scores for all three models and two optimization methods:
+
+: Table of AUC comparisons 
+
++---------------+---------------+-------------+--------------+
+|               | Withinsession | Presession  |    Full      |          
++===============+===============+=============+==============+
+| CART          |   0.5763      |     0.6385  |    0.6569    |           
++---------------+---------------+-------------+--------------+
+| XGBoost       |   0.5834      |     0.6425  |   0.6624     |           
++---------------+---------------+-------------+--------------+
+
+
+### (b) Next, use Relative Information Gain (RIG) to evaluate the performance of the six models presented above. Present the results in a table. (0.25 point)
+```{r}
+RIG <- function(pred,actual){
+  mean.outcome = mean(actual)
+  pred = pmin(pmax(pred, 0.0000001), 1-0.0000001)
+  llpred = mean(-log(pred)*actual-log(1-pred)*(1-actual))
+  llbase = mean(-log(mean.outcome)*actual-log(1-mean.outcome)*(1-actual))
+  rig = (1- llpred/llbase)*100
+  return(rig)
+}
+RIG(variety_test$withinsession.CART.pred, variety_test$click)
+RIG(variety_test$withinsession.xgb.pred, variety_test$click)
+RIG(variety_test$presession.CART.pred, variety_test$click)
+RIG(variety_test$presession.xgb.pred, variety_test$click)
+RIG(variety_test$full.CART.pred, variety_test$click)
+RIG(variety_test$full.xgb.pred, variety_test$click)
+
+```
+To summarize the RIG results for all six models, we make the following table:
+
+: Table of RIG (in percent) comparisons 
+
++---------------+---------------+-------------+--------------+
+|               | WithinSession | Presession  | Full         |          
++===============+===============+=============+==============+
+| CART          |  1.2168       |   3.4752    |   4.4530    |           
++---------------+---------------+-------------+--------------+
+| XGBoost       |  1.3396       |   3.5357    |  4.9277     |           
++---------------+---------------+-------------+--------------+
+### (c) Compare the performance of different models and summarize your findings on the relative predictive ability of the six models. What is the best model among these six? (0.5 points)
+
+The qualitative results from this table are exactly the same as that from the AUC table. Overall, this suggests that, irrespective of the evaluation metric used, the XGBoost model that uses all the targeting information is the best predictive model. Hence, for all the business purposes and to develop targeting policies, we should use this model.
+
+## 6. Summarize your findings on the two main substantive questions of interest: (1 point)
+
+### (a) What is the relative value of within-session user history vs. pre-session user history? (0.5 points)
+From the model evaulation I did in previous questions, the pre-session user history has higher value than the within-session history because the predictive models using pre-session user history has higher performance on predicting users clicks. 
+
+### (b) What is the effect (positive or negative) of within-session variety on users’ ad response? (0.5 points)
+The within-session variety has positive effect on user's ad response. 
+
+
+## 7. Business implications: EA now buys all the impressions in the test data. Going forward, EA would like to identify and only buy the top 5000 impressions which yield the highest CTR. To help them with this objective: (3 points)
+
+### (a) Identify the top 5000 of impressions with the highest predicted CTR (based on the best model that you identified in the previous question) and store these impressions in a separate dataframe.(0.5 points)
+```{r}
+top5000=variety_test[order(variety_test$full.xgb.pred,decreasing = T)[1:5000],]
+```
+
+### (b) What is the average CTR for these 5000 impressions? What is the average predicted CTR of these impressions based on your best model. Is your model-predicted average CTR close or similar to the true CTR observed in this subset of the data? (0.5 points)
+```{r}
+mean(top5000$click)
+mean(top5000$full.xgb.pred)
+```
+The average predicted CTR of these impressions is 0.1914, the model-predicted averaged CTR is 0.190. They are similar to each other. 
+
+
+###(c) ROI calculation on test data: Assume that each of these impressions costs EA $0.05 and each click is worth $2. ROI is defined: (Marginal gain - Marketing spend)/Marketing spend.
+
+i. Baseline ROI – First, calculate the Baseline ROI in the sitution where EA buys all the impressions in the test data. (0.25 points)
+
+```{r}
+(mean(variety_test$click) * 2 - 0.05) / 0.05
+```
+It's 3.50
+
+ii. New ROI – Next, calculate the ROI if EA only buys the top 5000 impressions. How does this ROI compare to the baseline? (0.25 points)
+```{r}
+(mean(top5000$click) * 2 - 0.05)/ 0.05
+```
+It's 6.67, this ROI is higher than the baseline.
+
+### (d) Assuming that there is another marketing activity (price promotions) which has an ROI of 5. Suppose EA has a total of $1000 to invest in price promotions and advertising. How should EA distribute this money between advertising and price promotions. Specifically, how many of the top impressions should EA buy (consider only multiples of 500, e.g., 500 impressions, 1000 impressions and so on), and what is the revenue and cost of this advertising spend? And how much should EA invest in price promotions? (1.5 points)
+
+We want to find the target number when the ROI goes below 5. Which must larger than 5000
+```{r}
+top8000=variety_test[order(variety_test$full.xgb.pred,decreasing = T)[1:7000],]
+(mean(top8000$click) * 2 - 0.05)/ 0.05
+
+top15000=top8000=variety_test[order(variety_test$full.xgb.pred,decreasing = T)[1:15000],]
+(mean(top15000$click) * 2 - 0.05)/ 0.05
+
+top12000=top8000=variety_test[order(variety_test$full.xgb.pred,decreasing = T)[1:12000],]
+(mean(top12000$click) * 2 - 0.05)/ 0.05
+
+
+```
+we found that when the target number equals to 12000, the ROI will goes below 5. 
+So, it should target 12000 top impressions
+
+12000*0.05=600. So EA should invest 600 on ads and 400 on promotions. 

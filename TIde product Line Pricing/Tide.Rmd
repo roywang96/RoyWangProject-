@@ -1,0 +1,294 @@
+---
+title: "Tide Product Line Pricing"
+author: "Roy Wang"
+date: "2/12/2020"
+output: word_document
+---
+
+My marketing-analytic consulting task is to conduct a base pricing analysis for P&G’s flagship laundry detergent brand, Tide. The main questions to address are:
+1. What is the extent of cannibalization within the Tide product line?
+2. Does Tide face a competitive threat from Wisk?
+3. How do you evaluate the current pricing tactics? Do you recommend changes?
+I have access to scanner data in the laundry detergent category across 86 stores of a retail chain in Chicago. The data are in the file Detergent.RData (the file is available on Canvas). The data include weekly sales and price information for three products — Tide 128 oz, Tide 64 oz, Wisk 64 oz — across the 86 stores. The data are available for up to 300 weeks
+
+## 1 Data Description
+
+### a.Report the revenue market shares of the three products (percentage of total sales revenue across all store-weeks), and report the mean, median, and standard deviation of prices for the three products across store-weeks. Make a table of these variables. 
+
+```{r}
+#Import Dataset
+load("Detergent.RData")
+Detergent=detergent_DF
+
+
+#Find Price Statistics
+library(psych)
+describe(Detergent)
+
+# Calculate Marketshares
+tide_128_Revenue=Detergent$q_tide128*Detergent$p_tide128
+tide_64_Revenue=Detergent$q_tide64*Detergent$p_tide64
+wisk_64_Revenue=Detergent$q_wisk64*Detergent$p_wisk64
+total=sum(tide_128_Revenue)+sum(tide_64_Revenue)+sum(wisk_64_Revenue)
+m_tide128=sum(tide_128_Revenue)/total
+m_tide64=sum(tide_64_Revenue)/total
+m_wisk64=sum(wisk_64_Revenue)/total
+```
+Table of marketshare (in percentage) and price statistics (in dollars)
+
++---------------+---------------+-------------+--------------+-----------+
+| Product       | Marketshare   | Mean Price  | Median Price | Std. Dev |          
++===============+===============+=============+==============+===========+
+| Tide 128 oz   |     56.85     |     8.36    |     8.48     |    0.76  |
++---------------+---------------+-------------+--------------+-----------+
+| Tide 64 oz    |     26.34     |     4.38    |     4.42     |    0.40  |
++---------------+---------------+-------------+--------------+-----------+
+| Wisk 64 oz    |     16.81     |     4.07    |     4.19     |    0.49  |
++---------------+---------------+-------------+--------------+-----------+
+
+### b.Then generate two new variables that capture the price gap (price difference) between (i) Tide 128oz and Tide 64oz, (ii) Tide 64oz and Wisk 64oz. Report the mean, median, and std. dev. of the two price gap variables across store-weeks. Make a table showing these statistics. 
+```{r}
+PriceGap_Tide128_Tide64=abs(Detergent$p_tide128-Detergent$p_tide64)
+PriceGap_Tide64_Wisk64=abs(Detergent$p_tide64-Detergent$p_wisk64)
+describe(PriceGap_Tide128_Tide64)
+describe(PriceGap_Tide64_Wisk64)
+
+```
+Table of price gap statistics(in dollars)
+
++---------------------------+-------------+--------------+-----------+
+| Price Gap  Between        |     Mean    |    Median    |  Std. Dev |          
++===========================+=============+==============+===========+
+| Tide 128 oz & Tide 64 oz  |     3.99    |     4.09     |     0.87  |   
++---------------------------+-------------+--------------+-----------+
+| Tide 64 oz & Wisk 64 oz   |     0.5     |     0.36     |     0.43  |   
++---------------------------+-------------+--------------+-----------+
+
+### c. Provide histograms of the price gaps.
+```{r}
+par(cex = 0.65) 
+hist(PriceGap_Tide128_Tide64, freq= F, col = "lightskyblue1", 
+     breaks = 20, xlab = "Dollars", main = "Price Gaps between Tide128oz and Tide64oz")
+par(cex = 0.65) 
+hist(PriceGap_Tide64_Wisk64, freq= F, col = "lightskyblue1", 
+     breaks = 20, xlab = "Dollars", main = "Price Gaps between Tide64oz and Wisk64oz")
+```
+
+### d.What do you learn from the price gap histograms and summary statistics for your analysis above? Is there enough variation in the price gaps across stores and weeks to estimate the cross price elasticities between the two Tide pack sizes and Wisk 64? 
+
+The price gap between two Tide product is almost normal distributed. It's stable and it stay at 4 dollars. The price gap between Tide 64 oz and Wisk 64oz is highly varied in different stores and weeks. The distribution is right skewed.  There is enough variation in the price gaps across stores and weeks to estimate the cross price elasticities between the two Tide pack sizes and Wisk 64
+
+## 2.Demand estimation
+
+### a.Construct the sales velocity for each of Tide 64 and Tide 128
+```{r}
+Detergent$Tide128_velocity=Detergent$q_tide128/Detergent$acv
+Detergent$Tide64_velocity=Detergent$q_tide64/Detergent$acv
+```
+
+### b.What is the purpose of dividing unit sales by ACV to construct the dependent variable? 
+To captures store-size weighted distribution of sales. It's a more precise measure of the performance of a product. 
+
+### c.Estimate log-linear demand models for the two Tide products by regressing the log of velocity on all prices (own and competing products).
+```{r}
+demand_tide128=lm(log(Tide128_velocity)~log(p_tide128)+log(p_tide64)+log(p_wisk64),data=Detergent)
+summary(demand_tide128)
+demand_tide64=lm(log(Tide64_velocity)~log(p_tide128)+log(p_tide64)+log(p_wisk64),data=Detergent)
+summary(demand_tide64)
+```
+### d.Discuss whether the demand estimates (own and cross price elasticities) make sense. Are the magnitudes and signs of the estimated parameters as you would expect?
+The own price elasticities of tide128 is -4.6, the cross price elasticities are 0.28 and 0.15. This makes sense because the tide128 is relatively elastic and sensitive to its own price change, but not sensitive to the other two products' prices change due to that they are not in the same market segmentation.
+
+The own price elasticities of tide64 is -3.7, the cross price elasticities are 1,44 and -0.87. these numbers are not as I would expect. I thought tide64 and Wisk64 are competing products, if the Wisk64 price increases, the demand of tide64 should increases.
+
+## 3.Time trend
+### a. Re-estimate the log-linear demand models for the two Tide products including a time trend. A time trend is a variable that proxies for the progress of time. Here, you can use the week variable as a time trend. 
+```{r}
+demand_tide128t=lm(log(Tide128_velocity)~log(p_tide128)+log(p_tide64)+log(p_wisk64)+week,data=Detergent)
+summary(demand_tide128t)
+demand_tide64t=lm(log(Tide64_velocity)~log(p_tide128)+log(p_tide64)+log(p_wisk64)+week,data=Detergent)
+summary(demand_tide64t)
+```
+### b.Explain why adding a time trend is important here. Discuss whether the demand estimates now make sense. Is there an improvement over the model specification in question 2?
+Because Detergent is not a everyday product, it's good to buy once but use for a long time, so there is a demand decrease trend with time. Now the both the tide128 and tide64 demand estimates make sense. The R2 values increase campared the previous models, so there is an improvement over the model specification in question 2.
+
+## 4. Focus on non-promoted weeks
+
+### a.In what fraction of store-weeks was at least one of the detergents promoted? (Hint: Look at the summary statistics).
+```{r}
+sum(Detergent$promoflag)/nrow(Detergent)
+```
+81.6% store-weeks was at least one of the detergents promoted.
+
+### b. Re-estimate the log-linear demand models with a time-trend for the two Tide products only using data from non-promoted store-weeks. Discuss whether the demand estimates (own and cross price elasticities) now make sense — is there an improvement over the specification in question 3? Provide some intuition for the change in the estimated own-price effects.
+
+```{r}
+Detergent_2 = subset(Detergent, promoflag !=1)
+demand_tide128new=lm(log(Tide128_velocity)~log(p_tide128)+log(p_tide64)+log(p_wisk64)+week,data=Detergent_2)
+summary(demand_tide128new)
+demand_tide64new=lm(log(Tide64_velocity)~log(p_tide128)+log(p_tide64)+log(p_wisk64)+week,data=Detergent_2)
+summary(demand_tide64new)
+```
+
+
+Now the price elasticities makes more sense. The change of price of another tide product won't affect the demand of tide product. For tide64, the change of price of wisk64 has somewhat impact on the demand. For the two tide products,small changes in their own price cause large changes in quantity demanded. 
+
+## 5. Store fixed effects
+
+### a.Re-estimate the log-linear demand models for the two Tide products including a time trend and store fixed effects using the data for the non-promoted store-weeks. Do not display the coefficients for the fixed effects. Only show the intercept and coefficents for all the price elasticities and the time trend.
+
+```{r}
+library(broom)
+library(knitr)
+demand_tide128store=lm(log(Tide128_velocity)~log(p_tide128)+log(p_tide64)+log(p_wisk64)+week+factor(store),data=Detergent_2)
+demand_tide128store_DF = tidy(demand_tide128store)
+kable(demand_tide128store_DF[1:5,], digits = 4)
+
+demand_tide64store=lm(log(Tide64_velocity)~log(p_tide128)+log(p_tide64)+log(p_wisk64)+week+factor(store),data=Detergent_2)
+demand_tide64store_DF = tidy(demand_tide64store)
+kable(demand_tide64store_DF[1:5,], digits = 4)
+
+```
+
+### b.Do the estimates of own and cross price elasticties reveal an improvement over the model specification in 4?
+
+Yes, the p values decrease, which means those numbers become more significant. The own and cross price elasticites become more precis than that in question 4. 
+
+### c.Compare the estimates to a slightly different regression with the log of unit sales, not log of velocity, as dependent variable. How do the elasticity estimates and the time trend compare across these two regressions? Is the difference (or absence of a difference) as expected?
+
+```{r}
+
+demand_tide128unit=lm(log(q_tide128)~log(p_tide128)+log(p_tide64)+log(p_wisk64)+week+factor(store),data=Detergent_2)
+demand_tide128unit_DF = tidy(demand_tide128unit)
+kable(demand_tide128unit_DF[1:5,], digits = 4)
+
+demand_tide64unit=lm(log(q_tide64)~log(p_tide128)+log(p_tide64)+log(p_wisk64)+week+factor(store),data=Detergent_2)
+demand_tide64unit_DF = tidy(demand_tide64unit)
+kable(demand_tide64unit_DF[1:5,], digits = 4)
+
+```
+
+There are no changes in elasticity estimates and the time trend across these two regressions. The absence of a difference is as expected because the store factors have taken into consideration in the model. 
+
+
+## Question 6
+
+### a.Calculate base (regular) prices, using the data for the non-promoted store-weeks
+
+```{r}
+BasePrice_Tide128=mean(Detergent_2$p_tide128)
+BasePrice_Tide128
+```
+
+### b.Do a similar calculation for Tide 64.
+```{r}
+BasePrice_Tide64=mean(Detergent_2$p_tide64)
+BasePrice_Tide64
+```
+
+### c.Calculate the base volume as average yearly chain-level volume sales
+```{r}
+BaseVolume_Tide128=mean(Detergent_2$q_tide128)*86*52
+BaseVolume_Tide128
+```
+
+### d.Do a similar calculation for Tide 64.
+```{r}
+BaseVolume_Tide64=mean(Detergent_2$q_tide64)*86*52
+BaseVolume_Tide64
+```
+
+### e.What is the average yearly base total profit for Tide (sum of profits for Tide 64 and Tide 128) 
+```{r}
+P=BaseVolume_Tide128*(BasePrice_Tide128*(1-0.25)-0.027*128)+BaseVolume_Tide64*(BasePrice_Tide64*(1-0.25)-0.027*64)
+P
+```
+The average yearly base total profit for Tide is $1161182 .
+
+### f. Calculate the total new expected volume of Tide, i.e. the new volume of the 128 oz and 64 oz products, from the following price changes: (2 points) (1) A simultaneous 5 percent increase in the prices of Tide 128 and Tide 64 (2) A simultaneous 5 percent decrease in the prices of Tide 128 and Tide 64 (3) A simultaneous 5 percent increase in the price of Tide 128 and 5 percent decrease in the price of Tide 64 (4) A simultaneous 5 percent decrease in the price of Tide 128 and 5 percent increase in the price of Tide 64
+
+From question 5, the price elastisities for Tide128 and Tide64 are -2.38,0.21,0.90,-1.49, we can create a function to get the new volum 
+
+```{r}
+# Specify the function
+new_volume<- function(y1, y2, beta11, beta12,beta21,beta22,q1,q2)                          {
+   
+   # Quantitychange ratio Calculation 
+   ratio1 = (1+y1)^(beta11)*(1+y2)^(beta12)
+   ratio2 = (1+y1)^(beta21)*(1+y2)^(beta22)
+   
+   #Calculate the new volume
+   newv1=q1*ratio1
+   newv2=q2*ratio2
+   
+   # Return results as a list
+   return (list(newv1,newv2))
+}
+
+```
+
+#### (1) A simultaneous 5 percent increase in the prices of Tide 128 and Tide 64
+```{r}
+NewVolume_Tide128_Tide64=new_volume(0.05,0.05,-2.38,0.21,0.90,-1.49,247068,282954.3)
+NewVolume_Tide128_Tide64
+```
+New volume for Tide 128 is 222247, for Tide64 is 274925.
+
+#### (2) A simultaneous 5 percent decrease in the prices of Tide 128 and Tide 64
+```{r}
+NewVolume_Tide128_Tide64=new_volume(-0.05,-0.05,-2.38,0.21,0.90,-1.49,247068,282954.3)
+NewVolume_Tide128_Tide64
+```
+New volume for Tide 128 is 276157, for Tide64 is 291648.
+
+#### (3) A simultaneous 5 percent increase in the price of Tide 128 and 5 percent decrease in the price of Tide 64
+```{r}
+NewVolume_Tide128_Tide64=new_volume(0.05,-0.05,-2.38,0.21,0.90,-1.49,247068,282954.3)
+NewVolume_Tide128_Tide64
+```
+New volume for Tide 128 is 217625, for Tide64 is 319138.
+
+#### (4) A simultaneous 5 percent decrease in the price of Tide 128 and 5 percent increase in the price of Tide 64
+```{r}
+NewVolume_Tide128_Tide64=new_volume(-0.05,0.05,-2.38,0.21,0.90,-1.49,247068,282954.3)
+NewVolume_Tide128_Tide64
+```
+New volume for Tide 128 is 282023, for Tide64 is 251244.
+
+### g.Calculate the total new expected profits for each of the price changes in the Q6.f. Are the prices of Tide approximately optimal, or do you recommend changes to the product-line pricing of Tide? (1 point)
+```{r}
+# (1)
+222247*(BasePrice_Tide128*(1+0.05)*(1-0.25)-0.027*128)+274925*(BasePrice_Tide64*(1+0.05)*(1-0.25)-0.027*64)
+#(2)
+276157.1*(BasePrice_Tide128*(1-0.05)*(1-0.25)-0.027*128)+291648.2*(BasePrice_Tide64*(1-0.05)*(1-0.25)-0.027*64)
+#(3)
+217624.6*(BasePrice_Tide128*(1+0.05)*(1-0.25)-0.027*128)+319138*(BasePrice_Tide64*(1-0.05)*(1-0.25)-0.027*64)
+#(4)
+282022.7*(BasePrice_Tide128*(1-0.05)*(1-0.25)-0.027*128)+251243.9*(BasePrice_Tide64*(1+0.05)*(1-0.25)-0.027*64)
+```
+
+Table of quantities sold and profits when Tide changes the price of Tide 64 and 128. Price changes are shown in percentages
+
++---------------+---------------+-------------+--------------+---------------+
+| del_price_128 | del_price_64  | q_128       | q_64         | Total profits |          
++===============+===============+=============+==============+===============+
+| 0.05          | 0.05          |    222246.9 |     274925.2 |   1192569     |
++---------------+---------------+-------------+--------------+---------------+
+| -0.05         | -0.05         |    276157.1 |     291648.2 |   1123326     |
++---------------+---------------+-------------+--------------+---------------+
+| 0.05          | -0.05         |    217624.6 |     319138   |   1149171     | 
++---------------+---------------+-------------+--------------+---------------+
+| -0.05         | 0.05          |    282022.7 |     251243.9 |   1164540     |
++---------------+---------------+-------------+--------------+---------------+
+
+##  7.Summary
+### a.What is the extent of cannibalization within the Tide product line? 
+For Tide128, 1% price change of Tide64 casues 2% sales change in Tide128
+For Tide 64, 1% price change of Tide128 casues 8% sales change in Tide64.
+
+### b.Does Tide face a competitive threat from Wisk? 
+The cross price elastisities of Wisk from previous analysis is less than 1, which is unelastic. There is not much competitive threat from Wisk.
+
+### c. How do you evaluate the current pricing tactics? Do you recommend changes? 
+Based on the analysis, I recommend increase both Tide64 and Tide128 increase 5% price to get the max profit. 
+
